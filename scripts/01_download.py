@@ -50,6 +50,33 @@ ONS = "https://www.ons.gov.uk"
 TIMEOUT = 120
 CHUNK = 1 << 20  # 1 MiB
 
+RETRY_ON = {429, 500, 502, 503, 504}
+MAX_RETRIES = 5
+DELAY = 1.5  # seconds between requests
+
+
+def polite_get(session, url, stream=False, delay=DELAY):
+    """GET with a pause between requests and backoff on rate limiting.
+
+    ONS is a free public service with no API key and no published quota.
+    Pausing between requests and honouring Retry-After is the minimum
+    courtesy; it also makes the pipeline survive its own retries.
+    """
+    resp = None
+    for attempt in range(MAX_RETRIES):
+        time.sleep(delay)
+        resp = session.get(url, stream=stream, timeout=TIMEOUT)
+        if resp.status_code not in RETRY_ON:
+            resp.raise_for_status()
+            return resp
+        wait = float(resp.headers.get("Retry-After", delay * 2 ** attempt))
+        print(f"    {resp.status_code} - waiting {wait:.0f}s "
+              f"(attempt {attempt + 1}/{MAX_RETRIES})")
+        resp.close()
+        time.sleep(wait)
+    resp.raise_for_status()
+    return resp
+
 # Source registry. Page URLs, never file URLs - see the docstring.
 DATASETS = {
     "affordability": {
@@ -146,8 +173,7 @@ def find_previous_versions(page_html, session):
     if link is None:
         return []
 
-    resp = session.get(link, timeout=TIMEOUT)
-    resp.raise_for_status()
+    resp = polite_get(session, link)
 
     out = []
     for row in BeautifulSoup(resp.text, "html.parser").find_all("tr"):
@@ -187,8 +213,7 @@ def download(edition, key, session, manifest):
     tmp = target.with_suffix(target.suffix + ".part")
 
     digest, size = hashlib.sha256(), 0
-    with session.get(edition["url"], stream=True, timeout=TIMEOUT) as r:
-        r.raise_for_status()
+    with polite_get(session, edition["url"], stream=True) as r:
         with tmp.open("wb") as f:
             for chunk in r.iter_content(chunk_size=CHUNK):
                 if chunk:
@@ -257,8 +282,7 @@ def main():
         spec = DATASETS[key]
         print(f"\n{key}\n  {spec['title']}")
         try:
-            resp = session.get(spec["url"], timeout=TIMEOUT)
-            resp.raise_for_status()
+            resp = polite_get(session, spec["url"])
 
             editions = find_editions(resp.text, spec["url"])
             print(f"  {len(editions)} edition(s) on the page")
