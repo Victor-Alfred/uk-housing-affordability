@@ -1,26 +1,43 @@
 # Python
 .venv/
+venv/
 __pycache__/
 *.py[cod]
 *.egg-info/
+.ipynb_checkpoints/
 
-# macOS
+# macOS / IDE
 .DS_Store
+.vscode/
+.idea/
 
-# Environment / secrets
+# Secrets
 .env
 .env.*
 !.env.example
 
-# Local data
+# Data
+#
+# Exclude the CONTENTS of each data dir, not the dir itself. `data/raw/*`
+# still lets git descend, so the negations below work; `data/raw/` would
+# stop git descending and the negations would be dead.
+#
+# Note `*` matches dotfiles here, unlike in the shell — which is why
+# .gitkeep has to be re-included explicitly.
 data/raw/*
-data/processed/*
+data/staging/*
+data/exports/*
 
-# Jupyter
-.ipynb_checkpoints/
+!data/raw/.gitkeep
+!data/staging/.gitkeep
+!data/exports/.gitkeep
 
-# IDE
-.vscode/
+# Provenance record — source URL, edition, SHA-256, timestamp per file.
+# The one thing in data/ that MUST be versioned.
+!data/raw/manifest.jsonl
+
+# Interrupted downloads
+*.part
 
 # Logs
 *.log
